@@ -67,7 +67,12 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab);
 
 int main()
 {
-    std::ifstream input_file("data.txt", std::ifstream::in);
+    std::string filePath;
+    
+    std::cout << "Enter name of file: ";
+    std::cin >> filePath;
+
+    std::ifstream input_file(filePath, std::ifstream::in);
     if (!input_file.is_open())
     {
         std::cerr << "Can't open file.\n";
@@ -88,6 +93,8 @@ int main()
     countSymbolsCpu(buf.str().data(), length, countsTabCpu, &countSymbols);
     
     countSymbolsCuda(buf.str().data(), length, countsTabGpu);
+
+    PrintResult(countsTabGpu);
 
     delete countsTabGpu;
 
