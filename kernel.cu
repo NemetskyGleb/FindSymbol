@@ -17,8 +17,10 @@ constexpr int TAB_SIZE = 256;
 __global__ void countSymbolsKernel(const char* data, uint32_t size, int* countsTab)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    atomicAdd(&countsTab[data[i]], 1);
+    if (i < size)
+    {
+        atomicAdd(&countsTab[data[i]], 1);
+    }
 }
 
 void PrintResult(const int* countsTab)
