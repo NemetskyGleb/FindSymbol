@@ -12,42 +12,38 @@
 
 constexpr int T = 1024; // max threads per block
 
-void substractWithCuda(int* c, const int* a, const int* b, uint32_t size);
+constexpr int TAB_SIZE = 256;
 
-__global__ void CountSymbolsKernel(const char* data, size_t size, std::unordered_map<char, int32_t>& result)
+__global__ void countSymbolsKernel(const char* data, uint32_t size, int* countsTab)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    auto it = result.find(data[i]);
-    if (it != result.end())
-    {
-        atomicAdd(&result[data[i]], 1);
-    }
-    else
-    {
-        result[data[i]] = 1;
-    }
+
+    atomicAdd(&countsTab[data[i]], 1);
 }
 
-void PrintResult(const std::unordered_map<char, int32_t>& result)
+void PrintResult(const int* countsTab)
 {
     std::cout << "Symbols count:\n";
     int32_t totalCount = 0;
-    for (const auto& elem : result)
+    for (int i = 0; i < TAB_SIZE; i++)
     {
-        std::cout << elem.first << " : " << elem.second << std::endl;
-        totalCount += elem.second;
+        if (countsTab[i])
+        {
+            std::cout << (char)i << " : " << countsTab[i] << std::endl;
+            totalCount += countsTab[i];
+        }
     }
     std::cout << "Total count: " << totalCount << '\n';
 }
 
-void calculateFunctionTime(const char* data, size_t size, 
-    std::function<std::unordered_map<char, int32_t>(const char* data, size_t size)> countSymbols)
+void countSymbolsCpu(const char* data, uint32_t size,  int* countsTab,
+    std::function<void(const char* data, uint32_t size, int* countsTab)> countSymbols)
 {
     using namespace std::chrono;
 
     auto start = high_resolution_clock::now();
     
-    auto counts = countSymbols(data, size);
+    countSymbols(data, size, countsTab);
 
     auto stop = high_resolution_clock::now();
 
@@ -56,29 +52,18 @@ void calculateFunctionTime(const char* data, size_t size,
     std::cout << "Time taken by function: "
         << duration.count() << " milliseconds" << std::endl;
 
-    PrintResult(counts);
+    PrintResult(countsTab);
 }
 
-std::unordered_map<char, int32_t> CountSymbols(const char* data, size_t size)
+void countSymbols(const char* data, uint32_t size, int* countsTab)
 {
-    std::unordered_map<char, int32_t> result;
-
     for (size_t i = 0; i < size; i++)
     {
-        auto it = result.find(data[i]);
-        if (it != result.end())
-        {
-            result[data[i]]++;
-        }
-        else
-        {
-            result[data[i]] = 1;
-        }
+        countsTab[data[i]]++;
     }
-    return result;
 }
 
-
+void countSymbolsCuda(const char* data, uint32_t length, int* countsTab);
 
 int main()
 {
@@ -95,33 +80,26 @@ int main()
 
     std::cout << "Result on CPU:" << std::endl;
 
-    calculateFunctionTime(buf.str().data(), buf.str().size(), &CountSymbols);
+    uint32_t length = static_cast<uint32_t>( buf.str().size());
 
-    //GenerateText();
+    int countsTabCpu[TAB_SIZE] = { 0 };
+    int* countsTabGpu = new int[TAB_SIZE];
 
-    //CountSymbols();
-    //PrintResult(a, b, c1, arraySize);
-
-    //delete[] c1;
-    //substractWithCuda(c2, a, b, arraySize);
-
-
-    //PrintResult(a, b, c2, arraySize);
-
-    //cudaError_t cudaStatus = cudaDeviceReset();
-
-    //delete[] c2, a, b;
+    countSymbolsCpu(buf.str().data(), length, countsTabCpu, &countSymbols);
     
+    countSymbolsCuda(buf.str().data(), length, countsTabGpu);
+
+    delete countsTabGpu;
 
     return 0;
 }
 
-//Helper function for using CUDA to substract vectors in parallel.
-void substractWithCuda(int* c, const int* a, const int* b, uint32_t size)
+
+void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 {
-    int* dev_a = 0;
-    int* dev_b = 0;
-    int* dev_c = 0;
+    char* dev_data;
+    int* dev_tab;
+
     cudaError_t cudaStatus;
 
     auto checkError = [&](cudaError_t status)
@@ -130,73 +108,63 @@ void substractWithCuda(int* c, const int* a, const int* b, uint32_t size)
         {
             std::cerr << "Error! ";
             std::cerr << cudaGetErrorString(status) << std::endl;
-            cudaFree(dev_c);
-            cudaFree(dev_a);
-            cudaFree(dev_b);
-            std::exit(-1);
+            cudaFree(dev_data);
+            cudaFree(dev_tab);
+            if (countsTab) {
+                delete[] countsTab;
+            }
+            exit(-1);
         }
     };
 
-    // Choose which GPU to run on, change this on a multi-GPU system.
     cudaStatus = cudaSetDevice(0);
     checkError(cudaStatus);
-
-    // Allocate GPU buffers for three vectors (two input, one output).
-    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
+    
+    cudaStatus = cudaMalloc((void**)&dev_data, length * sizeof(int));
     checkError(cudaStatus);
-    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-    checkError(cudaStatus);
-    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
+    cudaStatus = cudaMalloc((void**)&dev_tab, TAB_SIZE * sizeof(int));
     checkError(cudaStatus);
 
-    // Copy input vectors from host memory to GPU buffers.
-    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-    checkError(cudaStatus);
-    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
+    cudaStatus = cudaMemcpy(dev_data, data, length, cudaMemcpyHostToDevice);
     checkError(cudaStatus);
 
-    // инициализируем события
     cudaEvent_t start, stop;
     float elapsedTime;
-    // создаем события
+
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
-    // запись события
+
     cudaEventRecord(start, 0);
 
-    // Launch a kernel on the GPU with one thread for each element.
-    substractKernel <<<(int)ceil((float)size / T), T >>>(dev_c, dev_a, dev_b, size);
+    countSymbolsKernel<<<(int)ceil((float)length / T), T>>>(dev_data, length, dev_tab);
 
     cudaStatus = cudaEventRecord(stop, 0);
     checkError(cudaStatus);
-    // ожидание завершения работы ядра
+
     cudaStatus = cudaEventSynchronize(stop);
     checkError(cudaStatus);
     cudaStatus = cudaEventElapsedTime(&elapsedTime, start, stop);
     checkError(cudaStatus);
-    // вывод информации
-    printf("Time spent executing by the GPU: %.2f millseconds\n", elapsedTime);
-    // уничтожение события
+
+    printf("Time spent executing by the GPU: %.2f milliseconds\n", elapsedTime);
+
     cudaStatus = cudaEventDestroy(start);
     checkError(cudaStatus);
     cudaStatus = cudaEventDestroy(stop);
     checkError(cudaStatus);
 
-    // Check for any errors launching the kernel
     cudaStatus = cudaGetLastError();
     checkError(cudaStatus);
 
-    // cudaDeviceSynchronize waits for the kernel to finish, and returns
-    // any errors encountered during the launch.
     cudaStatus = cudaDeviceSynchronize();
     checkError(cudaStatus);
 
-    // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaStatus = cudaMemcpy(countsTab, dev_tab, TAB_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
     checkError(cudaStatus);
 
-    // Free resources.
-    cudaFree(dev_c);
-    cudaFree(dev_a);
-    cudaFree(dev_b);
+    cudaStatus = cudaDeviceReset();
+    checkError(cudaStatus);
+
+    cudaFree(dev_data);
+    cudaFree(dev_tab);
 }
