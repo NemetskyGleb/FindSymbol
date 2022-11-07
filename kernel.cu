@@ -92,6 +92,9 @@ int main()
 
     countSymbolsCpu(buf.str().data(), length, countsTabCpu, &countSymbols);
     
+    // filling with nulls
+    std::fill_n(countsTabGpu, TAB_SIZE, 0);
+
     countSymbolsCuda(buf.str().data(), length, countsTabGpu);
 
     PrintResult(countsTabGpu);
