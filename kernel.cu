@@ -150,10 +150,6 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 
     countSymbolsKernel<<<(int)ceil((float)length / T), T>>>(dev_data, length, dev_tab);
 
-    cudaStatus = cudaEventDestroy(start);
-    checkError(cudaStatus);
-    cudaStatus = cudaEventDestroy(stop);
-    checkError(cudaStatus);
 
     cudaStatus = cudaGetLastError();
     checkError(cudaStatus);
@@ -170,6 +166,11 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
     cudaStatus = cudaEventSynchronize(stop);
     checkError(cudaStatus);
     cudaStatus = cudaEventElapsedTime(&elapsedTime, start, stop);
+    checkError(cudaStatus);
+
+    cudaStatus = cudaEventDestroy(start);
+    checkError(cudaStatus);
+    cudaStatus = cudaEventDestroy(stop);
     checkError(cudaStatus);
 
     printf("Time spent executing by the GPU: %.2f milliseconds\n", elapsedTime);
