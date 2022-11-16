@@ -67,6 +67,8 @@ void countSymbols(const char* data, uint32_t size, int* countsTab)
 
 void countSymbolsCuda(const char* data, uint32_t length, int* countsTab);
 
+void CompareResults(const int* tab1, const int* tab2);
+
 int main()
 {
     std::string filePath;
@@ -100,6 +102,8 @@ int main()
     countSymbolsCuda(buf.str().data(), length, countsTabGpu);
 
     PrintResult(countsTabGpu);
+
+    CompareResults(countsTabCpu, countsTabGpu);
 
     delete countsTabGpu;
 
@@ -150,7 +154,6 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 
     countSymbolsKernel<<<(int)ceil((float)length / T), T>>>(dev_data, length, dev_tab);
 
-
     cudaStatus = cudaGetLastError();
     checkError(cudaStatus);
 
@@ -180,4 +183,23 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 
     cudaFree(dev_data);
     cudaFree(dev_tab);
+}
+
+void CompareResults(const int* tab1, const int* tab2)
+{
+    bool equal = true;
+    for (int i = 0; i < TAB_SIZE; i++)
+    {
+        if (tab1[i] != tab2[i])
+        {
+            equal = false;
+        }
+    }
+    if (equal)
+    {
+        std::cout << "Results are equal!" << std::endl;
+    }
+    else {
+        std::cout << "Result aren't equal!" << std::endl;
+    }
 }
