@@ -135,6 +135,11 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 
     cudaStatus = cudaSetDevice(0);
     checkError(cudaStatus);
+    
+    cudaStatus = cudaMalloc((void**)&dev_data, length );
+    checkError(cudaStatus);
+    cudaStatus = cudaMalloc((void**)&dev_tab, TAB_SIZE * sizeof(int));
+    checkError(cudaStatus);
 
     cudaEvent_t start, stop;
     float elapsedTime;
@@ -143,11 +148,6 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
     cudaEventCreate(&stop);
 
     cudaEventRecord(start, 0);
-    
-    cudaStatus = cudaMalloc((void**)&dev_data, length );
-    checkError(cudaStatus);
-    cudaStatus = cudaMalloc((void**)&dev_tab, TAB_SIZE * sizeof(int));
-    checkError(cudaStatus);
 
     cudaStatus = cudaMemcpy(dev_data, data, length, cudaMemcpyHostToDevice);
     checkError(cudaStatus);
