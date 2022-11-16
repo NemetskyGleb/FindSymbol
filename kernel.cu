@@ -131,6 +131,14 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 
     cudaStatus = cudaSetDevice(0);
     checkError(cudaStatus);
+
+    cudaEvent_t start, stop;
+    float elapsedTime;
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start, 0);
     
     cudaStatus = cudaMalloc((void**)&dev_data, length );
     checkError(cudaStatus);
@@ -140,25 +148,7 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
     cudaStatus = cudaMemcpy(dev_data, data, length, cudaMemcpyHostToDevice);
     checkError(cudaStatus);
 
-    cudaEvent_t start, stop;
-    float elapsedTime;
-
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    cudaEventRecord(start, 0);
-
     countSymbolsKernel<<<(int)ceil((float)length / T), T>>>(dev_data, length, dev_tab);
-
-    cudaStatus = cudaEventRecord(stop, 0);
-    checkError(cudaStatus);
-
-    cudaStatus = cudaEventSynchronize(stop);
-    checkError(cudaStatus);
-    cudaStatus = cudaEventElapsedTime(&elapsedTime, start, stop);
-    checkError(cudaStatus);
-
-    printf("Time spent executing by the GPU: %.2f milliseconds\n", elapsedTime);
 
     cudaStatus = cudaEventDestroy(start);
     checkError(cudaStatus);
@@ -173,6 +163,16 @@ void countSymbolsCuda(const char* data, uint32_t length, int* countsTab)
 
     cudaStatus = cudaMemcpy(countsTab, dev_tab, TAB_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
     checkError(cudaStatus);
+
+    cudaStatus = cudaEventRecord(stop, 0);
+    checkError(cudaStatus);
+
+    cudaStatus = cudaEventSynchronize(stop);
+    checkError(cudaStatus);
+    cudaStatus = cudaEventElapsedTime(&elapsedTime, start, stop);
+    checkError(cudaStatus);
+
+    printf("Time spent executing by the GPU: %.2f milliseconds\n", elapsedTime);
 
     cudaStatus = cudaDeviceReset();
     checkError(cudaStatus);
